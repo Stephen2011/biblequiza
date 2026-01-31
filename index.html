@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Holy Bible Reader & Quiz</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#8b7500">
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+body{font-family:system-ui;background:#f2f2f2;margin:0}
+body.dark{background:#121212;color:#eee}
+header{background:darkgoldenrod;color:#fff;padding:14px;text-align:center}
+section{padding:10px;text-align:center}
+#reader,#quizBox{background:#fff;max-width:720px;margin:10px auto;padding:12px;border-radius:8px}
+.qOptions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+.qOption{background:#f7f7f7;padding:8px 14px;border-radius:6px;cursor:pointer}
+.qOption input{margin-right:6px}
+.correct{background:#c8f7c5;border:2px solid #2ecc71}
+.wrong{background:#f7c5c5;border:2px solid #e74c3c}
+footer{background:#222;color:#ccc;padding:10px;text-align:center}
+#dailyVerse{color:gold}
+#timer{font-weight:bold;color:#b00}
+button,label{
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+select{max-width:240px;margin:6px auto}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h3 id="title">📖 Holy Bible Reader & Quiz</h3>
+  <select id="langSelect" class="form-select">
+    <option value="en">English</option>
+    <option value="fr">Français</option>
+    <option value="yo">Yorùbá</option>
+  </select>
+</header>
+
+<section>
+  <input id="book" placeholder="Book (e.g. Genesis)">
+  <input id="chapter" type="number" placeholder="Chapter">
+  <button id="searchBtn">Read</button>
+
+  <div id="reader">Search a Bible chapter…</div>
+
+  <select id="voiceSelect" class="form-select">
+    <option>Loading voices…</option>
+  </select>
+
+  <button id="ttsBtn">🔊 Read Aloud</button>
+  <button id="stopBtn">⏹ Stop</button>
+  <button id="musicBtn">🎵 Worship</button>
+  <button id="nightBtn">🌙 Night</button>
+</section>
+
+<section id="quizBox">
+  <div id="qText" class="fw-bold mb-2"></div>
+  <div id="timer"></div>
+  <div id="qOptions" class="qOptions"></div>
+  <button id="qNext">▶ Start Quiz</button>
+  <button id="restartBtn" style="display:none">🔁 Restart</button>
+  <div id="qScore" class="mt-2 fw-bold"></div>
+</section>
+
+<footer>
+  <div id="dailyVerse"></div>
+  <small>© 2026 Evangelist Engr. Stephen Jolayemi</small>
+</footer>
+
+<script>
+// ===== HELPERS =====
+const $=id=>document.getElementById(id);
+function bindClick(id,fn){ const el=$(id); if(el) el.onclick=fn; }
+
+// ===== AUDIO =====
+const correctSound=new Audio("correct.mp3");
+const wrongSound=new Audio("wrong.mp3");
+const music=new Audio("worship.mp3"); music.loop=true;
+
+// ===== LANGUAGE =====
+const LANG={
+ en:{title:"📖 Holy Bible Reader & Quiz",read:"Read",next:"Next",restart:"Restart",timer:"⏱ Click Start"},
+ fr:{title:"📖 Lecteur Biblique & Quiz",read:"Lire",next:"Suivant",restart:"Redémarrer",timer:"⏱ Cliquez"},
+ yo:{title:"📖 Ìkànsí Bíbélì & Ìdánwò",read:"Ka",next:"Itele",restart:"Tun bẹ̀rẹ̀",timer:"⏱ Tẹ"}
+};
+let currentLang=localStorage.lang||"en";
+
+function applyLang(){
+ const L=LANG[currentLang];
+ $("title").innerText=L.title;
+ $("searchBtn").innerText=L.read;
+ $("qNext").innerText=$("qNext").innerText.includes("▶")?"▶ "+L.next:L.next;
+ $("restartBtn").innerText="🔁 "+L.restart;
+ if(!started) $("timer").innerText=L.timer;
+}
+$("langSelect").value=currentLang;
+$("langSelect").onchange=()=>{currentLang=$("langSelect").value;localStorage.lang=currentLang;applyLang();};
+
+// ===== VOICES =====
+let voices=[];
+speechSynthesis.onvoiceschanged=()=>{
+ voices=speechSynthesis.getVoices();
+ $("voiceSelect").innerHTML="";
+ voices.forEach((v,i)=>{
+  const o=document.createElement("option");
+  o.value=i;o.textContent=`${v.name} (${v.lang})`;
+  $("voiceSelect").appendChild(o);
+ });
+};
+
+// ===== DAILY VERSE =====
+const verses=[
+"Psalm 23:1 – The Lord is my shepherd",
+"John 3:16 – For God so loved the world",
+"Philippians 4:13 – I can do all things",
+"Joshua 1:9 – Be strong and courageous"
+];
+const key="verse-"+new Date().toDateString();
+if(!localStorage[key]) localStorage[key]=verses[Math.floor(Math.random()*verses.length)];
+$("dailyVerse").innerText=localStorage[key];
+
+// ===== QUIZ =====
+let quiz=[
+{q:"Who built the ark?",o:["Noah","Moses","David"],a:"Noah"},
+{q:"Who led Israel out of Egypt?",o:["Moses","Joshua","Aaron"],a:"Moses"},
+{q:"Who walked on water?",o:["Jesus","Peter","Moses"],a:"Jesus"},
+{q:"Strongest man?",o:["Samson","David","Saul"],a:"Samson"},
+{q:"First king of Israel?",o:["Saul","David","Solomon"],a:"Saul"}
+].sort(()=>Math.random()-0.5);
+
+let qi=0,score=0,started=false,timer=null,timeLeft=15;
+
+function startTimer(){
+ clearInterval(timer);
+ timeLeft=15;
+ $("timer").innerText=`⏱ ${timeLeft}s`;
+ timer=setInterval(()=>{
+  timeLeft--;
+  $("timer").innerText=`⏱ ${timeLeft}s`;
+  if(timeLeft<=0){
+   clearInterval(timer);
+   wrongSound.play();
+   $("qScore").innerText=`❌ Time up! ${quiz[qi].a}`;
+   setTimeout(nextQ,1500);
+  }
+ },1000);
+}
+
+function renderQuiz(){
+ if(qi>=quiz.length){
+  $("qText").innerText="🎉 Quiz Finished!";
+  $("qOptions").innerHTML="";
+  $("timer").innerText="";
+  $("qScore").innerText=`Score: ${score}/${quiz.length}`;
+  $("restartBtn").style.display="inline-block";
+  return;
+ }
+ $("qText").innerText=quiz[qi].q;
+ $("qOptions").innerHTML=quiz[qi].o.map(o=>`
+ <label class="qOption">
+  <input type="radio" name="q" value="${o}"> ${o}
+ </label>`).join("");
+ $("qScore").innerText="";
+ $("timer").innerText=LANG[currentLang].timer;
+}
+
+function nextQ(){qi++;started=false;renderQuiz();}
+
+bindClick("qNext",()=>{
+ if(!started){started=true;startTimer();$("qNext").innerText=LANG[currentLang].next;return;}
+ const sel=document.querySelector('input[name="q"]:checked');
+ if(!sel) return;
+ clearInterval(timer);
+ document.querySelectorAll(".qOption").forEach(l=>{
+  const v=l.querySelector("input").value;
+  if(v===quiz[qi].a) l.classList.add("correct");
+  if(l.querySelector("input").checked && v!==quiz[qi].a) l.classList.add("wrong");
+ });
+ if(sel.value===quiz[qi].a){score++;correctSound.play();$("qScore").innerText="✅ Correct!";}
+ else{wrongSound.play();$("qScore").innerText=`❌ Correct: ${quiz[qi].a}`;}
+ setTimeout(nextQ,1500);
+});
+
+bindClick("restartBtn",()=>{qi=0;score=0;quiz.sort(()=>Math.random()-0.5);$("restartBtn").style.display="none";renderQuiz();});
+bindClick("searchBtn",()=>fetch(`https://bible-api.com/${book.value} ${chapter.value||1}`).then(r=>r.json()).then(d=>reader.innerText=d.text||"❌ Not found"));
+bindClick("ttsBtn",()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(reader.innerText);const v=voices[$("voiceSelect").value];if(v)u.voice=v;speechSynthesis.speak(u);});
+bindClick("stopBtn",()=>speechSynthesis.cancel());
+bindClick("musicBtn",()=>music.paused?music.play():music.pause());
+bindClick("nightBtn",()=>document.body.classList.toggle("dark"));
+
+applyLang();
+renderQuiz();
+</script>
+
+</body>
+</html>
